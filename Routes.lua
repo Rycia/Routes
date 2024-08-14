@@ -166,13 +166,24 @@ local GetPlayerFacing = GetPlayerFacing
 ------------------------------------------------------------------------------------------------------
 -- Data for Localized Zone Names
 local function GetZoneName(uiMapID)
+	-- Change individual zone display format in UI, eg. for the different Dalaran's.
 	local name = Routes.Dragons:GetLocalizedMap(uiMapID)
-	if uiMapID == 104 or uiMapID == 107 then -- Outland SMV and Nagrand
+	-- Outland
+	if uiMapID == 104 or uiMapID == 107 then
+		-- Shadowmoon Valley (Outland)
+		-- Nagrand (Outland)
 		name = format("%s (%s)", name, Routes.Dragons:GetLocalizedMap(101))
-	elseif uiMapID == 125 then -- Northrend Dalaran
+	-- Northrend
+	elseif uiMapID == 125 then
+		-- Dalaran (Northrend)
 		name = format("%s (%s)", name, Routes.Dragons:GetLocalizedMap(113))
-	elseif uiMapID == 2104 then -- Wintergrasp BG
+	elseif uiMapID == 2104 then
+		-- Wintergrasp (BG)
 		name = format("%s (BG)", name)
+	elseif uiMapID == 1527 or uiMapID == 1530 then -- Black Empire zones (Uldum, Vale)
+		name = format("%s (Black Empire)", name)
+	elseif uiMapID == 2070 then -- Tirisfal Glades after the fall of Undercity
+		name = format("%s (Lordaeron)", name)
 	end
 	return name
 end
@@ -185,40 +196,48 @@ end
 Routes.GetZoneName = GetZoneName
 
 Routes.LZName = setmetatable({}, { __index = function() return 0 end})
-local function processMapChildrenRecursive(parent)
-	local children = C_Map.GetMapChildrenInfo(parent)
-	if children and #children > 0 then
-		for i = 1, #children do
-			local id = children[i].mapID
-			if id then
-				if children[i].mapType == Enum.UIMapType.Zone or children[i].mapType == Enum.UIMapType.Continent then
-					local name = GetZoneName(id)
-
-					--[[
-					if Routes.LZName[name] and Routes.LZName[name] ~= 0 then
-						print(("Routes: Name %q already mapped to %d (new: %d)"):format(name, Routes.LZName[name], id))
-					end
-					--]]
-
-					Routes.LZName[name] = id
-
-					processMapChildrenRecursive(id)
-				elseif children[i].mapType == Enum.UIMapType.World then
-					processMapChildrenRecursive(id)
-				end
-			end
-		end
-	end
-end
 
 local COSMIC_MAP_ID = 946
 local WORLD_MAP_ID = 947
 
-if WOW_PROJECT_ID == WOW_PROJECT_CLASSIC then
-	processMapChildrenRecursive(WORLD_MAP_ID)
-else
-	processMapChildrenRecursive(COSMIC_MAP_ID)
+local validParentIDs = { [COSMIC_MAP_ID] = true, [WORLD_MAP_ID] = true }
+local function validMapParent(id)
+	-- invalid ID
+	if not id or id == 0 then return false end
+	-- parent we alreadychecked
+	if validParentIDs[id] then return true end
+
+	-- get map data
+	local data = Routes.Dragons.mapData[id]
+	if not data then return false end
+
+	-- only zones and continents
+	if data.mapType ~= Enum.UIMapType.Zone and data.mapType ~= Enum.UIMapType.Continent then return false end
+
+	-- walk up the tree
+	return validMapParent(data.parent)
 end
+
+local function processMapEntries()
+	for id, data in pairs(Routes.Dragons.mapData) do
+		if (data.mapType == Enum.UIMapType.Zone or data.mapType == Enum.UIMapType.Continent) and validMapParent(data.parent) then
+			validParentIDs[data.parent] = true
+
+			local name = GetZoneName(id)
+
+			--[[
+			if Routes.LZName[name] and Routes.LZName[name] ~= 0 then
+				print(("Routes: Name %q already mapped to %d (new: %d)"):format(name, Routes.LZName[name], id))
+			end
+			--]]
+
+			Routes.LZName[name] = id
+		end
+	end
+end
+
+-- initialize map list
+processMapEntries()
 
 ------------------------------------------------------------------------------------------------------
 -- Core Routes functions
